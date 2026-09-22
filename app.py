@@ -9,7 +9,8 @@ st.title("🔍 Googleレンズ風 Web類似画像検索AI")
 
 # --- SerpApi 設定 ---
 # 取得したAPIキーをここに貼り付けます
-SERPAPI_KEY = "YOUR_SERPAPI_KEY_HERE"
+SERPAPI_KEY = "d40d84efb3725876af1c33b63baf4..."
+
 
 st.write("画像をアップロードすると、自動でWeb全体の類似画像を検索します。")
 
