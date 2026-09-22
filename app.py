@@ -8,9 +8,8 @@ from serpapi import GoogleSearch
 st.set_page_config(page_title="Googleレンズ風 Web画像検索AI", layout="wide")
 st.title("🔍 Googleレンズ風 Web類似画像検索AI")
 
-# --- SerpApi 設定 ---
-SERPAPI_KEY = "d40d84efb3725876af1c33b63baf4xxxxxxxxxxxx"
-
+# --- Secrets から APIキーを安全に読み込む ---
+SERPAPI_KEY = st.secrets.get("SERPAPI_KEY", "")
 
 
 def get_public_image_url(image_bytes):
@@ -24,7 +23,6 @@ def get_public_image_url(image_bytes):
         )
         if res.status_code == 200:
             url = res.json()["data"]["url"]
-            # tmpfiles.org のURLを直リンク用 (dl/) に変換
             return url.replace("tmpfiles.org/", "tmpfiles.org/dl/")
     except Exception:
         pass
@@ -41,7 +39,7 @@ def get_public_image_url(image_bytes):
     except Exception:
         pass
 
-    # 3. ImgBB (フォールバック)
+    # 3. ImgBB
     try:
         payload = {
             "key": "3b0a232f38d3876be8695029f64bf876",
@@ -75,18 +73,16 @@ if query_file is not None:
         )
 
     with col2:
-        if not SERPAPI_KEY or SERPAPI_KEY == "YOUR_SERPAPI_KEY_HERE":
-            st.error("SerpApiのAPIキーが設定されていません。")
+        if not SERPAPI_KEY:
+            st.error("StreamlitのSecretsにSERPAPI_KEYが設定されていません。")
         else:
             with st.spinner("画像をGoogleレンズで解析・検索中..."):
                 try:
-                    # 画像軽量化 (800x800)
                     query_image.thumbnail((800, 800))
                     buffered = BytesIO()
                     query_image.save(buffered, format="JPEG", quality=85)
                     img_bytes = buffered.getvalue()
 
-                    # 公開URLの取得（複数サービス試行）
                     public_url = get_public_image_url(img_bytes)
 
                     if not public_url:
@@ -94,7 +90,6 @@ if query_file is not None:
                             "画像の転送に失敗しました。少し時間をおいて再度お試しください。"
                         )
                     else:
-                        # 本物の Google Lens エンジンを実行
                         params = {
                             "engine": "google_lens",
                             "url": public_url,
