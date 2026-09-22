@@ -1,6 +1,5 @@
 streamlit
-torch
-torchvision
-transformers
+google-search-results
 pillow
-chromadb
+requests
+
