@@ -1,53 +1,42 @@
-import base64
-from io import BytesIO
 import streamlit as st
-from PIL import Image
 from serpapi import GoogleSearch
 
 st.set_page_config(page_title="Googleレンズ風 Web画像検索AI", layout="wide")
 st.title("🔍 Googleレンズ風 Web類似画像検索AI")
 
 # --- SerpApi 設定 ---
-SERPAPI_KEY = "d40d84efb3725876af1c33b63baf4"
+SERPAPI_KEY = "d40d84efb3725876af1c33b63baf4..."  # ご自身のAPIキー
 
-st.write("画像をアップロードすると、自動でWeb全体の類似画像を検索します。")
+st.write("画像のURLを入力すると、Web上の類似画像をGoogle Lensで検索します。")
 
-query_file = st.file_uploader(
-    "検索したい画像をアップロードしてください", type=["jpg", "jpeg", "png"]
+# 画像URLの入力フィールド
+image_url = st.text_input(
+    "検索したい画像のURL（https://〜）を入力してください",
+    placeholder="https://example.com/sample.jpg",
 )
 
-if query_file is not None:
+if image_url:
     col1, col2 = st.columns([1, 2])
-    query_image = Image.open(query_file).convert("RGB")
 
     with col1:
-        st.image(
-            query_image, caption="検索クエリ画像", use_container_width=True
-        )
+        st.image(image_url, caption="検索クエリ画像", use_container_width=True)
 
     with col2:
-        if SERPAPI_KEY == "YOUR_SERPAPI_KEY_HERE" or not SERPAPI_KEY:
+        if not SERPAPI_KEY or SERPAPI_KEY == "YOUR_SERPAPI_KEY_HERE":
             st.error("SerpApiのAPIキーが設定されていません。")
         else:
-            with st.spinner("Googleレンズ風にWeb上を検索中..."):
+            with st.spinner("GoogleレンズでWeb上を検索中..."):
                 try:
-                    # 画像サイズをリサイズして容量を小さく（エラー回避対策）
-                    query_image.thumbnail((800, 800))
-                    buffered = BytesIO()
-                    query_image.save(buffered, format="JPEG", quality=85)
-                    img_str = base64.b64encode(buffered.getvalue()).decode()
-
-                    # SerpApi 経由で Google Lens を実行
+                    # SerpApi 経由で Google Lens を実行（URL指定）
                     params = {
                         "engine": "google_lens",
-                        "url": f"data:image/jpeg;base64,{img_str}",
+                        "url": image_url,
                         "api_key": SERPAPI_KEY,
                     }
 
                     search = GoogleSearch(params)
                     results = search.get_dict()
 
-                    # エラーレスポンスが含まれるかチェック
                     if "error" in results:
                         st.error(f"APIエラー: {results.get('error')}")
                     else:
