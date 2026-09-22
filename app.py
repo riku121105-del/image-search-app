@@ -1,88 +1,22 @@
-import os
-import chromadb
-from PIL import Image
+import base64
+from io import BytesIO
 import streamlit as st
-import torch
-from transformers import CLIPModel, CLIPProcessor
+from PIL import Image
+from serpapi import GoogleSearch
 
-st.set_page_config(page_title="Googleレンズ風 画像検索AI", layout="wide")
-st.title("🔍 Googleレンズ風 類似画像検索AI")
+st.set_page_config(page_title="Googleレンズ風 Web画像検索AI", layout="wide")
+st.title("🔍 Googleレンズ風 Web類似画像検索AI")
 
+# --- SerpApi 設定 ---
+# 取得したAPIキーをここに貼り付けます
+SERPAPI_KEY = "YOUR_SERPAPI_KEY_HERE"
 
-@st.cache_resource
-def load_clip_model():
-    model_name = "openai/clip-vit-base-patch32"
-    model = CLIPModel.from_pretrained(model_name)
-    processor = CLIPProcessor.from_pretrained(model_name)
-    return model, processor
-
-
-model, processor = load_clip_model()
-
-
-def extract_features(image):
-    inputs = processor(images=image, return_tensors="pt")
-    with torch.no_grad():
-        features = model.get_image_features(**inputs)
-        if not isinstance(features, torch.Tensor):
-            features = getattr(
-                features,
-                "image_embeds",
-                getattr(features, "logits_per_image", features[0]),
-            )
-        features = features / features.norm(p=2, dim=-1, keepdim=True)
-    return features.cpu().numpy().flatten().tolist()
-
-
-@st.cache_resource
-def get_chroma_collection():
-    client = chromadb.PersistentClient(path="./chroma_db")
-    return client.get_or_create_collection(
-        name="image_search", metadata={"hnsw:space": "cosine"}
-    )
-
-
-collection = get_chroma_collection()
-
-st.sidebar.header("📁 検索対象画像の登録")
-uploaded_data_files = st.sidebar.file_uploader(
-    "データベースに登録する画像を複数選択",
-    type=["jpg", "jpeg", "png"],
-    accept_multiple_files=True,
-)
-
-if st.sidebar.button("データベースに保存・インデックス化"):
-    if uploaded_data_files:
-        os.makedirs("./saved_images", exist_ok=True)
-        progress_bar = st.sidebar.progress(0)
-
-        for i, file in enumerate(uploaded_data_files):
-            save_path = os.path.join("./saved_images", file.name)
-            image = Image.open(file).convert("RGB")
-            image.save(save_path)
-
-            feature_vector = extract_features(image)
-            collection.upsert(
-                ids=[file.name],
-                embeddings=[feature_vector],
-                metadatas=[{"path": save_path}],
-            )
-            progress_bar.progress((i + 1) / len(uploaded_data_files))
-
-        st.sidebar.success(
-            f"{len(uploaded_data_files)} 枚の画像を登録しました！"
-        )
-    else:
-        st.sidebar.warning("画像を選択してください。")
-
-st.write("---")
-st.subheader("📸 画像をアップロードして類似画像を検索")
+st.write("画像をアップロードすると、自動でWeb全体の類似画像を検索します。")
 
 query_file = st.file_uploader(
     "検索したい画像をアップロードしてください", type=["jpg", "jpeg", "png"]
 )
 
-# --- 画像選択時に自動で検索する処理 ---
 if query_file is not None:
     col1, col2 = st.columns([1, 2])
     query_image = Image.open(query_file).convert("RGB")
@@ -93,35 +27,47 @@ if query_file is not None:
         )
 
     with col2:
-        if collection.count() == 0:
-            st.error(
-                "データベースに画像が登録されていません。左のサイドバーから画像を登録してください。"
-            )
+        if SERPAPI_KEY == "YOUR_SERPAPI_KEY_HERE" or not SERPAPI_KEY:
+            st.error("SerpApiのAPIキーが設定されていません。")
         else:
-            with st.spinner("AIが自動で類似画像を検索中..."):
-                query_vector = extract_features(query_image)
-                results = collection.query(
-                    query_embeddings=[query_vector], n_results=3
-                )
+            with st.spinner("Googleレンズ風にWeb上を検索中..."):
+                try:
+                    # 画像をBase64形式に変換
+                    buffered = BytesIO()
+                    query_image.save(buffered, format="JPEG")
+                    img_str = base64.b64encode(buffered.getvalue()).decode()
 
-                st.subheader("🎯 検索結果")
-                res_cols = st.columns(3)
+                    # SerpApi経由でGoogle Lens（逆画像検索）を実行
+                    params = {
+                        "engine": "google_lens",
+                        "url": f"data:image/jpeg;base64,{img_str}",
+                        "api_key": SERPAPI_KEY,
+                    }
 
-                for idx, (doc_id, distance, metadata) in enumerate(
-                    zip(
-                        results["ids"][0],
-                        results["distances"][0],
-                        results["metadatas"][0],
-                    )
-                ):
-                    similarity_score = max(0, (1 - distance) * 100)
-                    img_path = metadata["path"]
+                    search = GoogleSearch(params)
+                    results = search.get_dict()
 
-                    with res_cols[idx]:
-                        if os.path.exists(img_path):
-                            result_img = Image.open(img_path)
-                            st.image(
-                                result_img,
-                                caption=f"順位 {idx+1}\n類似度: {similarity_score:.1f}%",
-                                use_container_width=True,
-                            )
+                    visual_matches = results.get("visual_matches", [])
+
+                    if visual_matches:
+                        st.subheader("🎯 Web上の類似画像・見つかったページ")
+                        for item in visual_matches[:5]:
+                            title = item.get("title", "タイトルなし")
+                            link = item.get("link", "#")
+                            thumbnail = item.get("thumbnail")
+                            source = item.get("source", "")
+
+                            res_col1, res_col2 = st.columns([1, 3])
+                            with res_col1:
+                                if thumbnail:
+                                    st.image(thumbnail, use_container_width=True)
+                            with res_col2:
+                                st.markdown(f"**[{title}]({link})**")
+                                if source:
+                                    st.caption(f"出元: {source}")
+                            st.write("---")
+                    else:
+                        st.warning("類似画像が見つかりませんでした。")
+
+                except Exception as e:
+                    st.error(f"検索エラーが発生しました: {e}")
