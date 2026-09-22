@@ -8,7 +8,7 @@ from serpapi import GoogleSearch
 st.set_page_config(page_title="Googleレンズ風 Web画像検索AI", layout="wide")
 st.title("🔍 Googleレンズ風 Web類似画像検索AI")
 
-# --- Secrets から APIキーを安全に読み込む ---
+# --- Secrets から APIキーを取得 ---
 SERPAPI_KEY = st.secrets.get("SERPAPI_KEY", "")
 
 
