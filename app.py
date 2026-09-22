@@ -1,5 +1,5 @@
+import base64
 from io import BytesIO
-import requests
 import streamlit as st
 from PIL import Image
 from serpapi import GoogleSearch
@@ -9,21 +9,6 @@ st.title("🔍 Googleレンズ風 Web類似画像検索AI")
 
 # --- SerpApi 設定 ---
 SERPAPI_KEY = "d40d84efb3725876af1c33b63baf4..."  # ご自身のAPIキー
-
-
-def upload_image_to_web(image_bytes):
-    """画像を公開URLに一時アップロードする"""
-    try:
-        url = "https://catbox.moe/user/api.php"
-        data = {"reqtype": "fileupload"}
-        files = {"fileToUpload": ("image.jpg", image_bytes, "image/jpeg")}
-        res = requests.post(url, data=data, files=files, timeout=10)
-        if res.status_code == 200 and res.text.startswith("http"):
-            return res.text.strip()
-    except Exception:
-        pass
-    return None
-
 
 st.write("画像をアップロードすると、自動でWeb上の類似画像を検索します。")
 
@@ -44,59 +29,56 @@ if query_file is not None:
         if not SERPAPI_KEY or SERPAPI_KEY == "YOUR_SERPAPI_KEY_HERE":
             st.error("SerpApiのAPIキーが設定されていません。")
         else:
-            with st.spinner("画像を処理してGoogleレンズで検索中..."):
+            with st.spinner("Web上を自動検索中..."):
                 try:
-                    # 画像のサイズ・品質調整
-                    query_image.thumbnail((800, 800))
+                    # 画像をリサイズして軽量化
+                    query_image.thumbnail((600, 600))
                     buffered = BytesIO()
                     query_image.save(buffered, format="JPEG", quality=80)
-                    img_bytes = buffered.getvalue()
+                    img_base64 = base64.b64encode(buffered.getvalue()).decode(
+                        "utf-8"
+                    )
 
-                    # 一時Web URLへ変換
-                    public_url = upload_image_to_web(img_bytes)
+                    # Google Reverse Image Search（直接画像送信に対応）
+                    params = {
+                        "engine": "google_reverse_image",
+                        "image_url": f"data:image/jpeg;base64,{img_base64}",
+                        "api_key": SERPAPI_KEY,
+                    }
 
-                    if not public_url:
-                        st.error(
-                            "画像の転送に失敗しました。時間をおいて再試行してください。"
-                        )
+                    search = GoogleSearch(params)
+                    results = search.get_dict()
+
+                    if "error" in results:
+                        st.error(f"APIエラー: {results.get('error')}")
                     else:
-                        # SerpApiでGoogle Lensを実行
-                        params = {
-                            "engine": "google_lens",
-                            "url": public_url,
-                            "api_key": SERPAPI_KEY,
-                        }
+                        inline_images = results.get("inline_images", [])
+                        image_results = results.get("image_results", [])
+                        matches = inline_images or image_results
 
-                        search = GoogleSearch(params)
-                        results = search.get_dict()
+                        if matches:
+                            st.subheader("🎯 Web上の類似画像・見つかったページ")
+                            for item in matches[:5]:
+                                title = item.get("title", "関連ページ")
+                                link = item.get("link", "#")
+                                thumbnail = item.get("thumbnail") or item.get(
+                                    "original"
+                                )
+                                source = item.get("source", "")
 
-                        if "error" in results:
-                            st.error(f"APIエラー: {results.get('error')}")
+                                res_col1, res_col2 = st.columns([1, 3])
+                                with res_col1:
+                                    if thumbnail:
+                                        st.image(
+                                            thumbnail, use_container_width=True
+                                        )
+                                with res_col2:
+                                    st.markdown(f"**[{title}]({link})**")
+                                    if source:
+                                        st.caption(f"出元: {source}")
+                                st.write("---")
                         else:
-                            visual_matches = results.get("visual_matches", [])
-
-                            if visual_matches:
-                                st.subheader("🎯 Web上の類似画像・見つかったページ")
-                                for item in visual_matches[:5]:
-                                    title = item.get("title", "タイトルなし")
-                                    link = item.get("link", "#")
-                                    thumbnail = item.get("thumbnail")
-                                    source = item.get("source", "")
-
-                                    res_col1, res_col2 = st.columns([1, 3])
-                                    with res_col1:
-                                        if thumbnail:
-                                            st.image(
-                                                thumbnail,
-                                                use_container_width=True,
-                                            )
-                                    with res_col2:
-                                        st.markdown(f"**[{title}]({link})**")
-                                        if source:
-                                            st.caption(f"出元: {source}")
-                                    st.write("---")
-                            else:
-                                st.warning("類似画像が見つかりませんでした。")
+                            st.warning("類似画像が見つかりませんでした。")
 
                 except Exception as e:
                     st.error(f"検索エラーが発生しました: {e}")
