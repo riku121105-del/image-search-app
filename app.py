@@ -23,20 +23,14 @@ model, processor = load_clip_model()
 def extract_features(image):
     inputs = processor(images=image, return_tensors="pt")
     with torch.no_grad():
-        # CLIPで画像特徴量を抽出
         features = model.get_image_features(**inputs)
-
-        # 出力がBaseModelOutput等のオブジェクトの場合、tensorを取り出す
         if not isinstance(features, torch.Tensor):
             features = getattr(
                 features,
                 "image_embeds",
                 getattr(features, "logits_per_image", features[0]),
             )
-
-        # 正規化
         features = features / features.norm(p=2, dim=-1, keepdim=True)
-
     return features.cpu().numpy().flatten().tolist()
 
 
@@ -88,6 +82,7 @@ query_file = st.file_uploader(
     "検索したい画像をアップロードしてください", type=["jpg", "jpeg", "png"]
 )
 
+# --- 画像選択時に自動で検索する処理 ---
 if query_file is not None:
     col1, col2 = st.columns([1, 2])
     query_image = Image.open(query_file).convert("RGB")
@@ -98,36 +93,35 @@ if query_file is not None:
         )
 
     with col2:
-        if st.button("似ている画像を検索する", type="primary"):
-            if collection.count() == 0:
-                st.error(
-                    "データベースに画像が登録されていません。左のサイドバーから画像を登録してください。"
+        if collection.count() == 0:
+            st.error(
+                "データベースに画像が登録されていません。左のサイドバーから画像を登録してください。"
+            )
+        else:
+            with st.spinner("AIが自動で類似画像を検索中..."):
+                query_vector = extract_features(query_image)
+                results = collection.query(
+                    query_embeddings=[query_vector], n_results=3
                 )
-            else:
-                with st.spinner("AIが類似画像を検索中..."):
-                    query_vector = extract_features(query_image)
-                    results = collection.query(
-                        query_embeddings=[query_vector], n_results=3
+
+                st.subheader("🎯 検索結果")
+                res_cols = st.columns(3)
+
+                for idx, (doc_id, distance, metadata) in enumerate(
+                    zip(
+                        results["ids"][0],
+                        results["distances"][0],
+                        results["metadatas"][0],
                     )
+                ):
+                    similarity_score = max(0, (1 - distance) * 100)
+                    img_path = metadata["path"]
 
-                    st.subheader("🎯 検索結果")
-                    res_cols = st.columns(3)
-
-                    for idx, (doc_id, distance, metadata) in enumerate(
-                        zip(
-                            results["ids"][0],
-                            results["distances"][0],
-                            results["metadatas"][0],
-                        )
-                    ):
-                        similarity_score = max(0, (1 - distance) * 100)
-                        img_path = metadata["path"]
-
-                        with res_cols[idx]:
-                            if os.path.exists(img_path):
-                                result_img = Image.open(img_path)
-                                st.image(
-                                    result_img,
-                                    caption=f"順位 {idx+1}\n類似度: {similarity_score:.1f}%",
-                                    use_container_width=True,
-                                )
+                    with res_cols[idx]:
+                        if os.path.exists(img_path):
+                            result_img = Image.open(img_path)
+                            st.image(
+                                result_img,
+                                caption=f"順位 {idx+1}\n類似度: {similarity_score:.1f}%",
+                                use_container_width=True,
+                            )
