@@ -1,4 +1,3 @@
-import base64
 from io import BytesIO
 import requests
 import streamlit as st
@@ -11,21 +10,18 @@ st.title("🔍 Googleレンズ風 Web類似画像検索AI")
 # --- SerpApi 設定 ---
 SERPAPI_KEY = "d40d84efb3725876af1c33b63baf4..."  # ご自身のAPIキー
 
-# --- ImgBB 無料APIキー（画像一時保存用） ---
-IMGBB_API_KEY = "3b0a232f38d3876be8695029f64bf876"  # 一時アップロード用の共有キー
 
-
-def upload_to_imgbb(image_bytes):
-    """画像を一時的にWeb公開URLに変換する"""
-    url = "https://api.imgbb.com/1/upload"
-    payload = {
-        "key": IMGBB_API_KEY,
-        "image": base64.b64encode(image_bytes).decode("utf-8"),
-        "expiration": 600,  # 10分後に自動削除
-    }
-    res = requests.post(url, data=payload)
-    if res.status_code == 200:
-        return res.json()["data"]["url"]
+def upload_image_to_web(image_bytes):
+    """画像を公開URLに一時アップロードする"""
+    try:
+        url = "https://catbox.moe/user/api.php"
+        data = {"reqtype": "fileupload"}
+        files = {"fileToUpload": ("image.jpg", image_bytes, "image/jpeg")}
+        res = requests.post(url, data=data, files=files, timeout=10)
+        if res.status_code == 200 and res.text.startswith("http"):
+            return res.text.strip()
+    except Exception:
+        pass
     return None
 
 
@@ -48,21 +44,23 @@ if query_file is not None:
         if not SERPAPI_KEY or SERPAPI_KEY == "YOUR_SERPAPI_KEY_HERE":
             st.error("SerpApiのAPIキーが設定されていません。")
         else:
-            with st.spinner("画像を処理して検索中..."):
+            with st.spinner("画像を処理してGoogleレンズで検索中..."):
                 try:
-                    # リサイズ＆圧縮
+                    # 画像のサイズ・品質調整
                     query_image.thumbnail((800, 800))
                     buffered = BytesIO()
-                    query_image.save(buffered, format="JPEG", quality=85)
+                    query_image.save(buffered, format="JPEG", quality=80)
                     img_bytes = buffered.getvalue()
 
-                    # 1. 一時的にWeb URLへ変換
-                    public_url = upload_to_imgbb(img_bytes)
+                    # 一時Web URLへ変換
+                    public_url = upload_image_to_web(img_bytes)
 
                     if not public_url:
-                        st.error("画像の処理（一時アップロード）に失敗しました。")
+                        st.error(
+                            "画像の転送に失敗しました。時間をおいて再試行してください。"
+                        )
                     else:
-                        # 2. SerpApiでGoogle Lensを実行
+                        # SerpApiでGoogle Lensを実行
                         params = {
                             "engine": "google_lens",
                             "url": public_url,
