@@ -7,7 +7,7 @@ st.title("🔍 Googleレンズ風 Web類似画像検索AI")
 
 SERPAPI_KEY = st.secrets.get("SERPAPI_KEY", "")
 
-st.write("画像をアップロードすると、GoogleレンズでWeb上の類似画像を検索します。")
+st.write("画像をアップロードすると、GoogleでWeb上の類似画像を検索します。")
 
 query_file = st.file_uploader(
     "検索したい画像をアップロードしてください", type=["jpg", "jpeg", "png"]
@@ -26,20 +26,19 @@ if query_file is not None:
         if not SERPAPI_KEY:
             st.error("StreamlitのSecretsにSERPAPI_KEYが設定されていません。")
         else:
-            with st.spinner("画像をGoogleレンズで解析・検索中..."):
+            with st.spinner("画像を解析・検索中..."):
                 try:
-                    # ファイルの先頭にカーソルを戻す
                     query_file.seek(0)
                     file_bytes = query_file.read()
 
-                    # SerpApiへ直接画像をマルチパートで送信
+                    # google_reverse_image エンジンを使用し、直接ファイルを送信
                     url = "https://serpapi.com/search"
                     params = {
-                        "engine": "google_lens",
+                        "engine": "google_reverse_image",
                         "api_key": SERPAPI_KEY,
                         "hl": "ja",
                     }
-                    files = {"file": ("image.jpg", file_bytes, "image/jpeg")}
+                    files = {"image_url": ("image.jpg", file_bytes, "image/jpeg")}
 
                     response = requests.post(
                         url, params=params, files=files, timeout=30
@@ -49,14 +48,14 @@ if query_file is not None:
                     if "error" in results:
                         st.error(f"APIエラー: {results.get('error')}")
                     else:
-                        visual_matches = results.get("visual_matches", [])
+                        image_results = results.get("image_results", []) or results.get("inline_images", [])
 
-                        if visual_matches:
+                        if image_results:
                             st.subheader("🎯 Web上の類似画像・見つかったページ")
-                            for item in visual_matches[:5]:
+                            for item in image_results[:5]:
                                 title = item.get("title", "タイトルなし")
                                 link = item.get("link", "#")
-                                thumbnail = item.get("thumbnail")
+                                thumbnail = item.get("thumbnail") or item.get("original")
                                 source = item.get("source", "")
 
                                 res_col1, res_col2 = st.columns([1, 3])
