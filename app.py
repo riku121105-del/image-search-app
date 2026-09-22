@@ -8,7 +8,7 @@ st.set_page_config(page_title="Googleレンズ風 Web画像検索AI", layout="wi
 st.title("🔍 Googleレンズ風 Web類似画像検索AI")
 
 # --- SerpApi 設定 ---
-SERPAPI_KEY = "d40d84efb3725876af1c33b63baf4..."  # ご自身のAPIキー
+SERPAPI_KEY = "d40d84efb3725876af1c33b63baf4"
 
 st.write("画像をアップロードすると、自動でWeb全体の類似画像を検索します。")
 
