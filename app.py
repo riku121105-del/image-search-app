@@ -12,33 +12,7 @@ SERPAPI_KEY = st.secrets.get("SERPAPI_KEY", "")
 
 
 def get_public_image_url(image_bytes):
-    """複数サービスを順番に試して画像URLを取得する"""
-    # 1. tmpfiles.org
-    try:
-        res = requests.post(
-            "https://tmpfiles.org/api/v1/upload",
-            files={"file": ("image.jpg", image_bytes, "image/jpeg")},
-            timeout=8,
-        )
-        if res.status_code == 200:
-            url = res.json()["data"]["url"]
-            return url.replace("tmpfiles.org/", "tmpfiles.org/dl/")
-    except Exception:
-        pass
-
-    # 2. file.io
-    try:
-        res = requests.post(
-            "https://file.io",
-            files={"file": ("image.jpg", image_bytes, "image/jpeg")},
-            timeout=8,
-        )
-        if res.status_code == 200:
-            return res.json()["link"]
-    except Exception:
-        pass
-
-    # 3. ImgBB
+    """ImgBBを使用して確実に公開URLを取得する"""
     try:
         payload = {
             "key": "3b0a232f38d3876be8695029f64bf876",
@@ -46,13 +20,12 @@ def get_public_image_url(image_bytes):
             "expiration": 600,
         }
         res = requests.post(
-            "https://api.imgbb.com/1/upload", data=payload, timeout=8
+            "https://api.imgbb.com/1/upload", data=payload, timeout=10
         )
         if res.status_code == 200:
             return res.json()["data"]["url"]
     except Exception:
         pass
-
     return None
 
 
@@ -77,7 +50,7 @@ if query_file is not None:
         else:
             with st.spinner("画像をGoogleレンズで解析・検索中..."):
                 try:
-                    # 検索用画像を軽量化
+                    # リサイズして転送量を削減
                     query_image.thumbnail((800, 800))
                     buffered = BytesIO()
                     query_image.save(buffered, format="JPEG", quality=85)
@@ -94,6 +67,7 @@ if query_file is not None:
                             "engine": "google_lens",
                             "url": public_url,
                             "api_key": SERPAPI_KEY,
+                            "hl": "ja",
                         }
 
                         search = GoogleSearch(params)
@@ -102,14 +76,24 @@ if query_file is not None:
                         if "error" in results:
                             st.error(f"APIエラー: {results.get('error')}")
                         else:
-                            visual_matches = results.get("visual_matches", [])
+                            # 視覚的類似画像またはナレッジグラフからの結果を取得
+                            matches = results.get(
+                                "visual_matches", []
+                            ) or results.get("knowledge_graph", [])
 
-                            if visual_matches:
+                            if matches:
                                 st.subheader("🎯 Web上の類似画像・見つかったページ")
-                                for item in visual_matches[:5]:
-                                    title = item.get("title", "タイトルなし")
-                                    link = item.get("link", "#")
-                                    thumbnail = item.get("thumbnail")
+                                for item in matches[:5]:
+                                    title = item.get(
+                                        "title",
+                                        item.get("subtitle", "タイトルなし"),
+                                    )
+                                    link = item.get(
+                                        "link", item.get("source_page", "#")
+                                    )
+                                    thumbnail = item.get(
+                                        "thumbnail", item.get("images", [{}])[0].get("src")
+                                    )
                                     source = item.get("source", "")
 
                                     res_col1, res_col2 = st.columns([1, 3])
